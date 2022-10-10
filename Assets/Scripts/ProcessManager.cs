@@ -13,12 +13,22 @@ namespace OpenCvSharp.Demo
 
     using OpenCvSharp;
 
+    using SFB;
+
     public class ProcessManager : MonoBehaviour
     {
+        [Header("Folder Settings")]
         public InputField inputFolderPathText;
         public InputField outputFolderPathText;
+
+        [Header("Output Settings")]
         public InputField outputWidthText;
         public InputField outputHeightText;
+        public Toggle exportImageToggle;
+        public Toggle exportCropDataToggle;
+
+        [Header("Processing")]
+        public GameObject processingOverlay;
         public Text logText;
 
         private int maxLines = 6;
@@ -31,6 +41,8 @@ namespace OpenCvSharp.Demo
 
             outputWidthText.text = PlayerPrefs.GetString("_outputWidth", "512");
             outputHeightText.text = PlayerPrefs.GetString("_outputHeight", "512");
+
+            processingOverlay.SetActive(false);
         }
 
 
@@ -65,24 +77,20 @@ namespace OpenCvSharp.Demo
 
         public void BrowseForInputFolder()
         {
-            // TODO: Replace EditorUtility functions with non-EditorUtility functions (EditorUtility classes are not available when publishing).
-            /*Debug.Log("Browse for input folder button clicked.");
-            string directory = EditorUtility.OpenFolderPanel("Select Directory", "", "");
-            if(directory != "") {
-                inputFolderPathText.text = directory;
-                PlayerPrefs.SetString("_inputFolder", directory);
-            }*/
+            string[] directory = StandaloneFileBrowser.OpenFolderPanel("", "", false);
+            if(directory.Length != 1) { return; }
+
+            inputFolderPathText.text = directory[0];
+            PlayerPrefs.SetString("_inputFolder", directory[0]);
         }
 
         public void BrowseForOutputFolder()
         {
-            // TODO: Replace EditorUtility functions with non-EditorUtility functions (EditorUtility classes are not available when publishing).
-            /*Debug.Log("Browse for output folder button clicked.");
-            string directory = EditorUtility.OpenFolderPanel("Select Directory", "", "");
-            if(directory != "") {
-                outputFolderPathText.text = directory;
-                PlayerPrefs.SetString("_outputFolder", directory);
-            }*/
+            string[] directory = StandaloneFileBrowser.OpenFolderPanel("", "", false);
+            if (directory.Length != 1) { return; }
+
+            outputFolderPathText.text = directory[0];
+            PlayerPrefs.SetString("_outputFolder", directory[0]);
         }
 
         public void Process()
@@ -96,6 +104,18 @@ namespace OpenCvSharp.Demo
                 return;
             }
 
+            processingOverlay.SetActive(true);
+            if(exportCropDataToggle.isOn == true) {
+                string csvPath = Path.Join(outputFolderPathText.text, "cropData.csv");
+                File.Delete(csvPath);
+                string line = $"Filename,X,Y,Width,Height\n";
+            }
+
+            StartCoroutine(ProcessAllImages());
+        }
+
+        private IEnumerator ProcessAllImages()
+        {
             DirectoryInfo dir = new DirectoryInfo(inputFolderPathText.text);
             FileInfo[] info = dir.GetFiles();
             var fullNames = info.Select(f => f.Name).ToArray();
@@ -106,11 +126,14 @@ namespace OpenCvSharp.Demo
                 if (name.Contains(".jpg")) { contains = true; }
                 if (name.Contains(".jpeg")) { contains = true; }
 
-                if(contains == false) { continue; }
+                if (contains == false) { continue; }
 
                 writeLogLine($"Processing {name}");
-                this.ProcessImage(name);
+                ProcessImage(name);
+                yield return new WaitForSeconds(0.1f);
             }
+
+            processingOverlay.SetActive(false);
         }
 
         ////////////////////
@@ -138,70 +161,74 @@ namespace OpenCvSharp.Demo
         {
             string fullInputPath = Path.Join(inputFolderPathText.text, fileName);
             string fullOutputPath = Path.Join(outputFolderPathText.text, fileName);
+            int outputWidth = int.Parse(outputWidthText.text);
+            int outputHeight = int.Parse(outputHeightText.text);
 
-            Texture2D tex = null;
-            byte[] fileData;
-            if (File.Exists(fullInputPath))
-            {
-                fileData = File.ReadAllBytes(fullInputPath);
-                tex = new Texture2D(2, 2);
-                tex.LoadImage(fileData); //..this will auto-resize the texture dimensions.
+            Texture2D texture = LoadTexture(fullInputPath);
+
+            // Get meta data for texture.
+            Vector2 poiAvg = GetAvgORBKeypointPosition(texture);
+            UnityEngine.Rect cropRect = GetCropRect(texture, poiAvg);
+
+            if(exportCropDataToggle.isOn == true) {
+                SaveCropData(fileName, cropRect);
+			}
+            if(exportImageToggle.isOn == true) {
+                ProcessAndSaveImage(texture, cropRect, outputWidth, outputHeight, fileName, fullOutputPath);
             }
+        }
 
+        private void SaveCropData(string fileName, UnityEngine.Rect cropRect)
+        {
+            string csvPath = Path.Join(outputFolderPathText.text, "cropData.csv");
+            string line = $"{fileName},{cropRect.x},{cropRect.y},{cropRect.width},{cropRect.height}\n";
 
+            File.AppendAllText(csvPath, line);
+		}
 
-            Mat image = Unity.TextureToMat(tex);
-            Mat grayMat = new Mat();
-            Cv2.CvtColor(image, grayMat, ColorConversionCodes.BGR2GRAY);
+        private void ProcessAndSaveImage(Texture2D texture, UnityEngine.Rect cropRect, int outputWidth, int outputHeight, string fileName, string fullOutputPath)
+        {
+            // Crop/scale texture.
+            Texture2D result = CropTexture(texture, cropRect);
+            result = this.ScaleTexture(result, outputWidth, outputHeight);
 
-            // This parameter should introduce same result of http://opencv.jp/wordpress/wp-content/uploads/lenna_SURF-150x150.png            
-            ORB orb = ORB.Create(500);
-            KeyPoint[] keyPoints = orb.Detect(grayMat);
-
-            List<float> xPos = new List<float>();
-            List<float> yPos = new List<float>();
-
-            //Debug.Log($"KeyPoint has {keyPoints.Length} items.");
-            foreach (var t in keyPoints)
+            byte[] bytes = new byte[0];
+            if (fileName.Contains(".png"))
             {
-                //Debug.Log(t.Pt);
-
-                /*var dotGO = new GameObject();
-                Image dotImage = dotGO.AddComponent<Image>();
-                dotGO.GetComponent<RectTransform>().SetParent(this.image.transform);
-                //dotGO.GetComponent<RectTransform>().anchorMin = new Vector2(0, 1);
-                //dotGO.GetComponent<RectTransform>().anchorMax = new Vector2(0, 1);
-                dotGO.GetComponent<RectTransform>().anchorMin = new Vector2(0.5f, 0.5f);
-                dotGO.GetComponent<RectTransform>().anchorMax = new Vector2(0.5f, 0.5f);
-                dotGO.GetComponent<RectTransform>().sizeDelta = new Vector2(4, 4);
-                dotGO.GetComponent<RectTransform>().localPosition = new Vector2(t.Pt.X, -t.Pt.Y);*/
-
-                xPos.Add(t.Pt.X);
-                yPos.Add(t.Pt.Y);
+                bytes = result.EncodeToPNG();
             }
+            if (fileName.Contains(".jpg") || fileName.Contains(".jpeg"))
+            {
+                bytes = result.EncodeToJPG();
+            }
+            File.Delete(fullOutputPath);
+            File.WriteAllBytes(fullOutputPath, bytes);
+        }
 
-            float xAvg = xPos.Average();
-            float yAvg = yPos.Average();
-            //Debug.Log($"Average is {xAvg},{yAvg}");
+        ////////////////////
+        // Image Helpers
+        ////////////////////
 
-            float imageWidth = tex.width;
-            float imageHeight = tex.height;
+        private UnityEngine.Rect GetCropRect(Texture2D texture, Vector2 poiAvg)
+        {
+            float imageWidth = texture.width;
+            float imageHeight = texture.height;
 
             UnityEngine.Rect cropRect = new UnityEngine.Rect();
             if (imageHeight > imageWidth)
             {
                 cropRect.x = 0;
-                cropRect.y = imageHeight - yAvg;
-                cropRect.y -= imageWidth / 2;
+                cropRect.y = poiAvg.y - (imageWidth / 2);
                 //if(cropRect.y < 0) { cropRect.y = 0; }
                 cropRect.width = imageWidth;
                 cropRect.height = imageWidth;
 
-                if (cropRect.y + cropRect.height > imageHeight) { cropRect.y = imageHeight - cropRect.height; }
+                if(cropRect.y < 0) { cropRect.y = 0; }
+                if (cropRect.y + imageWidth > imageHeight) { cropRect.y = imageHeight - imageWidth; }
             }
             else
             {
-                cropRect.x = xAvg - (imageHeight / 2);
+                cropRect.x = poiAvg.x - (imageHeight / 2);
                 cropRect.y = 0;
                 cropRect.width = imageHeight;
                 cropRect.height = imageHeight;
@@ -210,23 +237,64 @@ namespace OpenCvSharp.Demo
                 if (cropRect.x + imageHeight > imageWidth) { cropRect.x = imageWidth - imageHeight; }
             }
 
+            cropRect.x = (int)cropRect.x;
+            cropRect.y = (int)cropRect.y;
+            cropRect.width = (int)cropRect.width;
+            cropRect.height = (int)cropRect.height;
+
+            return cropRect;
+		}
+
+        private Texture2D LoadTexture(string filePath)
+        {
+            Texture2D tex = null;
+            byte[] fileData;
+            if (File.Exists(filePath))
+            {
+                fileData = File.ReadAllBytes(filePath);
+                tex = new Texture2D(2, 2);
+                tex.LoadImage(fileData); //..this will auto-resize the texture dimensions.
+            }
+
+            return tex;
+		}
+
+        private Vector2 GetAvgORBKeypointPosition(Texture2D texture)
+        {
+            // Convert texture to grayscale mat.
+            Mat image = Unity.TextureToMat(texture);
+            Mat grayMat = new Mat();
+            Cv2.CvtColor(image, grayMat, ColorConversionCodes.BGR2GRAY);
+
+            // Get ORB keypoints.
+            ORB orb = ORB.Create(500);
+            KeyPoint[] keyPoints = orb.Detect(grayMat);
+
+            // Get x/y avg position from all keypoints.
+            List<float> xPos = new List<float>();
+            List<float> yPos = new List<float>();
+
+            foreach (var t in keyPoints)
+            {
+                xPos.Add(t.Pt.X);
+                yPos.Add(t.Pt.Y);
+            }
+
+            float xAvg = xPos.Average();
+            float yAvg = yPos.Average();
+
+            return new Vector2(xAvg, yAvg);
+        }
+
+        private Texture2D CropTexture(Texture2D texture, UnityEngine.Rect cropRect)
+        {
+            cropRect.y = texture.height - (cropRect.y + cropRect.height);
+
             Texture2D result = new Texture2D((int)cropRect.width, (int)cropRect.height);
-            result.SetPixels(tex.GetPixels((int)cropRect.x, (int)cropRect.y, (int)cropRect.width, (int)cropRect.height));
+            result.SetPixels(texture.GetPixels((int)cropRect.x, (int)cropRect.y, (int)cropRect.width, (int)cropRect.height));
             result.Apply();
 
-            int outputWidth = int.Parse(outputWidthText.text);
-            int outputHeight = int.Parse(outputHeightText.text);
-            result = this.ScaleTexture(result, outputWidth, outputHeight);
-
-            byte[] bytes = result.EncodeToPNG();
-            if(fileName.Contains(".png")) {
-                bytes = result.EncodeToPNG();
-			}
-            if(fileName.Contains(".jpg") || fileName.Contains(".jpeg")) {
-                bytes = result.EncodeToJPG();
-            }
-            File.Delete(fullOutputPath);
-            File.WriteAllBytes(fullOutputPath, bytes);
+            return result;
         }
 
         private Texture2D ScaleTexture(Texture2D source, int targetWidth, int targetHeight)

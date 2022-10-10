@@ -60,3 +60,4 @@ crashlytics-build.properties
 
 # Project Specific
 Assets/OpenCV+Unity*
+Assets/StandaloneFileBrowser*

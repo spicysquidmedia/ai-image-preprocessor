@@ -3,8 +3,8 @@ Unity application that will automatically find the areas of interest in a photog
 
 # Unity Packages Prerequisites
 [OpenCV plus Unity](https://assetstore.unity.com/packages/tools/integration/opencv-plus-unity-85928)
+[Unity Standalone File Browser](https://github.com/gkngkc/UnityStandaloneFileBrowser)
 
 # TODO
-- Set up browse button instead of having to paste in path
 - Set up ability to export cropped images or CSV file with crop rect data
 - Update processing code to be on own thread so UI can update while processing
