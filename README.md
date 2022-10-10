@@ -6,5 +6,3 @@ Unity application that will automatically find the areas of interest in a photog
 [Unity Standalone File Browser](https://github.com/gkngkc/UnityStandaloneFileBrowser)
 
 # TODO
-- Set up ability to export cropped images or CSV file with crop rect data
-- Update processing code to be on own thread so UI can update while processing
