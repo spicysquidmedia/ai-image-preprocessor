@@ -3,6 +3,7 @@ Unity application that will automatically find the areas of interest in a photog
 
 # Unity Packages Prerequisites
 [OpenCV plus Unity](https://assetstore.unity.com/packages/tools/integration/opencv-plus-unity-85928)
+
 [Unity Standalone File Browser](https://github.com/gkngkc/UnityStandaloneFileBrowser)
 
 # TODO
