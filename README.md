@@ -2,7 +2,7 @@
 Unity application that will automatically find the areas of interest in a photograph, use the average of those points as a center point, and crop/resize the images to a given size. Areas of interest are found using OpenCV's ORB. Application is a UI that lets you select an input folder, output folder, and output width/height.
 
 # Unity Packages Prerequisites
-[https://assetstore.unity.com/packages/tools/integration/opencv-plus-unity-85928](OpenCV plus Unity)
+[OpenCV plus Unity](https://assetstore.unity.com/packages/tools/integration/opencv-plus-unity-85928)
 
 # TODO
 - Add source code to repository
